@@ -26,7 +26,7 @@ from ..backbone.fpn import build_resnet_fpn_backbone
 from ..backbone.clip_backbone import build_clip_language_encoder
 from detectron2.utils.comm import gather_tensors, MILCrossEntropy
 
-__all__ = ["CLIPFastRCNN", "PretrainFastRCNN"]
+__all__ = ["CLIPFastRCNN", "PretrainFastRCNN","CLIPgroundingDINO"]
 
 @META_ARCH_REGISTRY.register()
 class CLIPFastRCNN(nn.Module):
@@ -830,3 +830,250 @@ def visualize_proposals(batched_inputs, proposals, input_format, vis_pretrain=Fa
             to_save = Image.fromarray(np.array(vis_img, np.uint8))
             to_save.save("output/regions/" + f_n.split("/")[-1].split(".")[0] + ".png")
             #break  # only visualize one image in a batch
+
+@META_ARCH_REGISTRY.register()
+class CLIPgroundingDINO(nn.Module):
+    """
+    Fast R-CNN style where the cropping is conducted on feature maps instead of raw images.
+    It contains the following two components: 
+    1. Localization branch: pretrained backbone+RPN or equivalent modules, and is able to output object proposals
+    2. Recognition branch: is able to recognize zero-shot regions
+    """
+    @configurable
+    def __init__(
+        self,
+        *,
+        detector: nn.Module,
+        backbone: Backbone,
+        language_encoder: nn.Module, 
+        roi_heads: nn.Module,
+        pixel_mean: Tuple[float],
+        pixel_std: Tuple[float],
+        input_format: Optional[str] = None,
+        vis_period: int = 0,
+        clip_crop_region_type: str = 'GT',
+        use_clip_c4: False,
+        use_clip_attpool: False,
+    ):
+        """
+        Args:
+            backbone: a backbone module, must follow detectron2's backbone interface
+            proposal_generator: a module that generates proposals using backbone features
+            roi_heads: a ROI head that performs per-region computation
+            pixel_mean, pixel_std: list or tuple with #channels element, representing
+                the per-channel mean and std to be used to normalize the input image
+            input_format: describe the meaning of channels of input. Needed by visualization
+            vis_period: the period to run visualization. Set to 0 to disable.
+        """
+        super().__init__()
+        self.detector = detector
+        self.backbone = backbone
+        self.lang_encoder = language_encoder
+        self.roi_heads = roi_heads
+        self.input_format = input_format
+        self.vis_period = vis_period
+        if vis_period > 0:
+            assert input_format is not None, "input_format is required for visualization!"
+
+        # input format, pixel mean and std for offline modules
+        self.register_buffer("pixel_mean", torch.tensor(pixel_mean).view(-1, 1, 1), False)
+        self.register_buffer("pixel_std", torch.tensor(pixel_std).view(-1, 1, 1), False)
+        assert (
+            self.pixel_mean.shape == self.pixel_std.shape
+        ), f"{self.pixel_mean} and {self.pixel_std} have different shapes!"
+        if np.sum(pixel_mean) < 3.0: # converrt pixel value to range [0.0, 1.0] by dividing 255.0
+            assert input_format == 'RGB'
+            self.div_pixel = True
+        else:
+            self.div_pixel = False
+        
+        self.clip_crop_region_type = clip_crop_region_type
+        self.use_clip_c4 = use_clip_c4 # if True, use C4 mode where roi_head uses the last resnet layer from backbone 
+        self.use_clip_attpool = use_clip_attpool # if True (C4+text_emb_as_classifier), use att_pool to replace default mean pool
+
+    @classmethod
+    def from_config(cls, cfg):
+        # region proposals are ground-truth boxes
+
+        detector = build_proposal_generator(cfg)
+        backbone = build_backbone(cfg)
+        # build language encoder
+        if cfg.MODEL.CLIP.GET_CONCEPT_EMB: # extract concept embeddings
+            language_encoder = build_clip_language_encoder(cfg)
+        else:
+            language_encoder = None
+        roi_heads = build_roi_heads(cfg, backbone.output_shape())
+
+        return {
+            "detector": detector,
+            "backbone": backbone,
+            "language_encoder": language_encoder, 
+            "roi_heads": roi_heads, 
+            "input_format": cfg.INPUT.FORMAT,
+            "vis_period": cfg.VIS_PERIOD,
+            "pixel_mean": cfg.MODEL.PIXEL_MEAN,
+            "pixel_std": cfg.MODEL.PIXEL_STD,
+            "clip_crop_region_type" : cfg.MODEL.CLIP.CROP_REGION_TYPE,
+            "use_clip_c4": cfg.MODEL.BACKBONE.NAME == "build_clip_resnet_backbone",
+            "use_clip_attpool": cfg.MODEL.ROI_HEADS.NAME in ['CLIPRes5ROIHeads', 'CLIPStandardROIHeads'] and cfg.MODEL.CLIP.USE_TEXT_EMB_CLASSIFIER,
+        }
+
+    @property
+    def device(self):
+        return self.pixel_mean.device
+
+    def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
+        """
+        Args:
+            batched_inputs: a list, batched outputs of :class:`DatasetMapper` .
+                Each item in the list contains the inputs for one image.
+                For now, each item in the list is a dict that contains:
+
+                * image: Tensor, image in (C, H, W) format.
+                * instances (optional): groundtruth :class:`Instances`
+                * proposals (optional): :class:`Instances`, precomputed proposals.
+
+                Other information that's included in the original dicts, such as:
+
+                * "height", "width" (int): the output resolution of the model, used in inference.
+                  See :meth:`postprocess` for details.
+
+        Returns:
+            list[dict]:
+                Each dict is the output for one input image.
+                The dict contains one key "instances" whose value is a :class:`Instances`.
+                The :class:`Instances` object has the following keys:
+                "pred_boxes", "pred_classes", "scores", "pred_masks", "pred_keypoints"
+        """
+        if not self.training:
+            return self.inference(batched_inputs)
+        if "instances" in batched_inputs[0]:
+            gt_instances = [x["labels"].to(self.device) for x in batched_inputs]
+        else:
+            gt_instances = None
+        
+        with torch.no_grad():  
+            # localization branch: offline modules to get the region proposals
+            proposals = []
+            for r_i, b_input in enumerate(batched_inputs): 
+                this_gt = self.detector(b_input)[0]['boxes']
+                proposals.append(this_gt)                       
+
+        # recognition branch: get 2D feature maps using the backbone of recognition branch
+        images = self.preprocess_image(batched_inputs)
+        features = self.backbone(images.tensor)
+
+        # Given the proposals, crop region features from 2D image features and classify the regions
+        if self.use_clip_c4: # use C4 + resnet weights from CLIP
+            if self.use_clip_attpool: # use att_pool from CLIP to match dimension
+                _, detector_losses = self.roi_heads(images, features, proposals, gt_instances, res5=self.backbone.layer4, attnpool=self.backbone.attnpool)
+            else: # use mean pool
+                _, detector_losses = self.roi_heads(images, features, proposals, gt_instances, res5=self.backbone.layer4)
+        else:  # regular detector setting
+            if self.use_clip_attpool: # use att_pool from CLIP to match dimension
+                _, detector_losses = self.roi_heads(images, features, proposals, gt_instances, attnpool=self.backbone.bottom_up.attnpool)
+            else: # use mean pool
+                _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
+        if self.vis_period > 0:
+            storage = get_event_storage()
+            if storage.iter % self.vis_period == 0:
+                self.visualize_training(batched_inputs, proposals)
+        #visualize_proposals(batched_inputs, proposals, self.input_format)
+
+        losses = {}
+        losses.update(detector_losses)
+        return losses
+
+    def inference(
+        self,
+        batched_inputs: List[Dict[str, torch.Tensor]],
+        detected_instances: Optional[List[Instances]] = None,
+        do_postprocess: bool = True,
+    ):
+        """
+        Run inference on the given inputs.
+
+        Args:
+            batched_inputs (list[dict]): same as in :meth:`forward`
+            detected_instances (None or list[Instances]): if not None, it
+                contains an `Instances` object per image. The `Instances`
+                object contains "pred_boxes" and "pred_classes" which are
+                known boxes in the image.
+                The inference will then skip the detection of bounding boxes,
+                and only predict other per-ROI outputs.
+            do_postprocess (bool): whether to apply post-processing on the outputs.
+
+        Returns:
+            When do_postprocess=True, same as in :meth:`forward`.
+            Otherwise, a list[Instances] containing raw network outputs.
+        """
+        assert not self.training
+        
+        # localization branch: offline modules to get the region proposals
+        proposals = []
+        for r_i, b_input in enumerate(batched_inputs): 
+            this_gt = self.detector(b_input)[0]['boxes']
+            
+            proposals.append(this_gt)                
+    
+        # recognition branch: get 2D feature maps using the backbone of recognition branch
+        images = self.preprocess_image(batched_inputs)
+        features = self.backbone(images.tensor)
+
+        # Given the proposals, crop region features from 2D image features and classify the regions
+        if self.use_clip_c4: # use C4 + resnet weights from CLIP
+            if self.use_clip_attpool: # use att_pool from CLIP to match dimension
+                results, _ = self.roi_heads(images, features, proposals, None, res5=self.backbone.layer4, attnpool=self.backbone.attnpool)
+            else: # use mean pool
+                results, _ = self.roi_heads(images, features, proposals, None, res5=self.backbone.layer4)
+        else:  # regular detector setting
+            if self.use_clip_attpool: # use att_pool from CLIP to match dimension
+                results, _  = self.roi_heads(images, features, proposals, None, attnpool=self.backbone.bottom_up.attnpool)
+            else:
+                results, _  = self.roi_heads(images, features, proposals, None)
+        
+        #visualize_proposals(batched_inputs, proposals, self.input_format)
+        if do_postprocess:
+            assert not torch.jit.is_scripting(), "Scripting is not supported for postprocess."
+            return CLIPFastRCNN._postprocess(results, batched_inputs)
+        else:
+            return results
+
+    def offline_preprocess_image(self, batched_inputs: List[Dict[str, torch.Tensor]]):
+        """
+        Normalize, pad and batch the input images. Use detectron2 default processing (pixel mean & std).
+        Note: Due to FPN size_divisibility, images are padded by right/bottom border. So FPN is consistent with C4 and GT boxes.
+        """
+        images = [x["image"].to(self.device) for x in batched_inputs]
+        texts = [x["text"] for x in batched_inputs]
+        original_image = [x["original_image"] for x in batched_inputs]
+
+        return images, texts, original_image
+
+    def preprocess_image(self, batched_inputs: List[Dict[str, torch.Tensor]]):
+        """
+        Normalize, pad and batch the input images. Use CLIP default processing (pixel mean & std).
+        Note: Due to FPN size_divisibility, images are padded by right/bottom border. So FPN is consistent with C4 and GT boxes.
+        """
+        images = [x["image"].to(self.device) for x in batched_inputs]
+        if self.div_pixel:
+            images = [((x / 255.0) - self.pixel_mean) / self.pixel_std for x in images]
+        else:
+            images = [(x - self.pixel_mean) / self.pixel_std for x in images]
+        images = ImageList.from_tensors(images, self.backbone.size_divisibility)
+        return images
+
+    @staticmethod
+    def _postprocess(instances, batched_inputs: List[Dict[str, torch.Tensor]]):
+        """
+        Rescale the output instances to the target size.
+        """
+        # note: private function; subject to changes
+        processed_results = []
+        for results_per_image, input_per_image in zip(
+            instances, batched_inputs):
+            height = input_per_image["height"]  # original image size, before resizing
+            width = input_per_image["width"]  # original image size, before resizing
+            r = detector_postprocess(results_per_image, height, width)
+            processed_results.append({"instances": r})
+        return processed_results

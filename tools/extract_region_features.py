@@ -18,6 +18,8 @@ from detectron2.engine import DefaultTrainer, default_argument_parser, default_s
 
 import detectron2.data.detection_utils as utils
 import detectron2.data.transforms as T
+import pandas as pd
+from PIL import Image, ImageDraw
 #from detectron2.modeling.meta_arch.clip_rcnn import visualize_proposals
 
 def setup(args):
@@ -31,13 +33,15 @@ def setup(args):
     default_setup(cfg, args)
     return cfg
 
-def get_inputs(cfg, file_name):
+def get_inputs(cfg, image,text):
     """ Given a file name, return a list of dictionary with each dict corresponding to an image
     (refer to detectron2/data/dataset_mapper.py)
     """
     # image loading
+    opened_image = Image.open(image)
     dataset_dict = {}
-    image = utils.read_image(file_name, format=cfg.INPUT.FORMAT)
+    #image = Image.open(image)
+    image = utils.read_image(image, format=cfg.INPUT.FORMAT)
     dataset_dict["height"], dataset_dict["width"] = image.shape[0], image.shape[1] # h, w before transforms
     
     # image transformation
@@ -48,6 +52,8 @@ def get_inputs(cfg, file_name):
     image = aug_input.image
     h, w = image.shape[:2]  # h, w after transforms
     dataset_dict["image"] = torch.as_tensor(np.ascontiguousarray(image.transpose(2, 0, 1)))
+    dataset_dict['text'] = text
+    dataset_dict['original_image'] = opened_image
 
     return [dataset_dict]
 
@@ -67,10 +73,6 @@ def create_model(cfg):
             cfg.MODEL.CLIP.BB_RPN_WEIGHTS, resume=False
         )
     
-    assert model.clip_crop_region_type == "RPN"
-    assert model.use_clip_c4 # use C4 + resnet weights from CLIP
-    assert model.use_clip_attpool # use att_pool from CLIP to match dimension
-    model.roi_heads.box_predictor.vis = True # get confidence scores before multiplying RPN scores, if any
     for p in model.parameters(): p.requires_grad = False
     model.eval()
     return model
@@ -81,32 +83,34 @@ def extract_region_feats(cfg, model, batched_inputs, file_name):
     """
     # model inference  
     # 1. localization branch: offline modules to get the region proposals           
-    images = model.offline_preprocess_image(batched_inputs)
-    features = model.offline_backbone(images.tensor)
-    proposals, _ = model.offline_proposal_generator(images, features, None)    
+    images,texts, original_image = model.offline_preprocess_image(batched_inputs)
+    proposals = model.detector(original_image,texts) 
     #visualize_proposals(batched_inputs, proposals, model.input_format) 
-
     # 2. recognition branch: get 2D feature maps using the backbone of recognition branch
     images = model.preprocess_image(batched_inputs)
     features = model.backbone(images.tensor)
 
     # 3. given the proposals, crop region features from 2D image features
-    proposal_boxes = [x.proposal_boxes for x in proposals]
+    proposal_boxes = [x['boxes'] for x in proposals]
+    proposal_labels = [x['labels'] for x in proposals]
+    proposal_scores = [x['scores'] for x in proposals]
     box_features = model.roi_heads._shared_roi_transform(
         [features[f] for f in model.roi_heads.in_features], proposal_boxes, model.backbone.layer4
     )
     att_feats = model.backbone.attnpool(box_features)  # region features
 
-    if cfg.MODEL.CLIP.TEXT_EMB_PATH is None: # save features of RPN regions
-        results = model._postprocess(proposals, batched_inputs) # re-scale boxes back to original image size
+    if cfg.MODEL.CLIP.TEXT_EMB_PATH == 'None': # save features of RPN regions
 
         # save RPN outputs into files
         im_id = 0 # single image
-        pred_boxes = results[im_id]['instances'].get("proposal_boxes").tensor # RPN boxes, [#boxes, 4]
+        pred_boxes = proposal_boxes
         region_feats = att_feats # region features, [#boxes, d]
+        print(region_feats.shape)
 
         saved_dict = {}
-        saved_dict['boxes'] = pred_boxes.cpu()
+        saved_dict['boxes'] = [i.cpu() for i in pred_boxes]
+        saved_dict['classes'] = [i for i in proposal_labels]
+        saved_dict['probs'] = [i.cpu() for i in proposal_scores]
         saved_dict['feats'] = region_feats.cpu()
     else: # save features of detection regions (after per-class NMS)
         # 4. prediction head classifies the regions (optional)
@@ -138,17 +142,20 @@ def main(args):
     model = create_model(cfg)
 
     # input images
-    image_files = [os.path.join(cfg.INPUT_DIR, x) for x in os.listdir(cfg.INPUT_DIR)]
+    file_name = cfg.INPUT_DIR
+    input_files = pd.read_csv(os.path.join(cfg.INPUT_DIR,'samples.csv'))
+    image_files = [os.path.join(cfg.INPUT_DIR, x) for x in input_files['images']]
+    concept_file = input_files['texts']
     
     # process each image
     start = time.time()
-    for i, file_name in enumerate(image_files):
+    for i, (img,text) in enumerate(zip(image_files,concept_file)):
         if i % 100 == 0:
             print("Used {} seconds for 100 images.".format(time.time()-start))
             start = time.time()
         
         # get input images
-        batched_inputs = get_inputs(cfg, file_name)
+        batched_inputs = get_inputs(cfg, img, text)
 
         # extract region features
         with torch.no_grad():
