@@ -132,12 +132,11 @@ def extract_region_feats(cfg, model, batched_inputs, file_name):
         saved_dict['probs'] = pred_probs.cpu()
         saved_dict['feats'] = region_feats.cpu()
 
-    saved_path = os.path.join(cfg.OUTPUT_DIR, os.path.basename(file_name).split('.')[0] + '.pth')
-    torch.save(saved_dict, saved_path)
+    return saved_dict
 
 def main(args):
     cfg = setup(args)
-
+    saved_list = []
     # create model
     model = create_model(cfg)
 
@@ -159,7 +158,10 @@ def main(args):
 
         # extract region features
         with torch.no_grad():
-            extract_region_feats(cfg, model, batched_inputs, file_name)
+            saved_dict = extract_region_feats(cfg, model, batched_inputs, file_name)
+            saved_list.append([saved_dict,img])
+    saved_path = os.path.join(cfg.OUTPUT_DIR, os.path.basename(file_name).split('.')[0] + '.pth')
+    torch.save(saved_list, saved_path)
 
     print("done!")
 
