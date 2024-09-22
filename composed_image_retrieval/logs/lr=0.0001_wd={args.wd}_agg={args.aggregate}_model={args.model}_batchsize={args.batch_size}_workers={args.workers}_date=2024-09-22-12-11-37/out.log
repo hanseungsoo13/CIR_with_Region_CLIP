@@ -1,0 +1,98 @@
+2024-09-22,21:11:39 | INFO | Rank 0 | Params:
+2024-09-22,21:11:39 | INFO | Rank 0 | C: 3.16
+2024-09-22,21:11:39 | INFO | Rank 0 | aggregate: True
+2024-09-22,21:11:39 | INFO | Rank 0 | batch_size: 128
+2024-09-22,21:11:39 | INFO | Rank 0 | beta1: 0.9
+2024-09-22,21:11:39 | INFO | Rank 0 | beta2: 0.98
+2024-09-22,21:11:39 | INFO | Rank 0 | checkpoint_path: ./logs/lr=0.0001_wd={args.wd}_agg={args.aggregate}_model={args.model}_batchsize={args.batch_size}_workers={args.workers}_date=2024-09-22-12-11-37/checkpoints
+2024-09-22,21:11:39 | INFO | Rank 0 | copy_codebase: False
+2024-09-22,21:11:39 | INFO | Rank 0 | csv_caption_key: title
+2024-09-22,21:11:39 | INFO | Rank 0 | csv_img_key: filepath
+2024-09-22,21:11:39 | INFO | Rank 0 | csv_separator: 	
+2024-09-22,21:11:39 | INFO | Rank 0 | dataset_type: auto
+2024-09-22,21:11:39 | INFO | Rank 0 | dataset_type_val: auto
+2024-09-22,21:11:39 | INFO | Rank 0 | debug: False
+2024-09-22,21:11:39 | INFO | Rank 0 | demo_out: demo
+2024-09-22,21:11:39 | INFO | Rank 0 | dist_backend: nccl
+2024-09-22,21:11:39 | INFO | Rank 0 | dist_url: tcp://127.0.0.1:6100
+2024-09-22,21:11:39 | INFO | Rank 0 | distributed: True
+2024-09-22,21:11:39 | INFO | Rank 0 | dp: False
+2024-09-22,21:11:39 | INFO | Rank 0 | droprate: 0.1
+2024-09-22,21:11:39 | INFO | Rank 0 | epochs: 30
+2024-09-22,21:11:39 | INFO | Rank 0 | eps: 1e-06
+2024-09-22,21:11:39 | INFO | Rank 0 | eval_mode: coco
+2024-09-22,21:11:39 | INFO | Rank 0 | gpu: 0
+2024-09-22,21:11:39 | INFO | Rank 0 | imagenet_v2: None
+2024-09-22,21:11:39 | INFO | Rank 0 | imagenet_val: None
+2024-09-22,21:11:39 | INFO | Rank 0 | log_level: 20
+2024-09-22,21:11:39 | INFO | Rank 0 | log_path: ./logs/lr=0.0001_wd={args.wd}_agg={args.aggregate}_model={args.model}_batchsize={args.batch_size}_workers={args.workers}_date=2024-09-22-12-11-37/out.log
+2024-09-22,21:11:39 | INFO | Rank 0 | logs: ./logs/
+2024-09-22,21:11:39 | INFO | Rank 0 | lr: 0.0001
+2024-09-22,21:11:39 | INFO | Rank 0 | middle_dim: 512
+2024-09-22,21:11:39 | INFO | Rank 0 | model: ViT-L/14
+2024-09-22,21:11:39 | INFO | Rank 0 | multigpu: None
+2024-09-22,21:11:39 | INFO | Rank 0 | n_layer: 2
+2024-09-22,21:11:39 | INFO | Rank 0 | name: lr=0.0001_wd={args.wd}_agg={args.aggregate}_model={args.model}_batchsize={args.batch_size}_workers={args.workers}_date=2024-09-22-12-11-37
+2024-09-22,21:11:39 | INFO | Rank 0 | ngpus_per_node: 1
+2024-09-22,21:11:39 | INFO | Rank 0 | openai_pretrained: True
+2024-09-22,21:11:39 | INFO | Rank 0 | precision: amp
+2024-09-22,21:11:39 | INFO | Rank 0 | prompts: None
+2024-09-22,21:11:39 | INFO | Rank 0 | query_file: None
+2024-09-22,21:11:39 | INFO | Rank 0 | rank: 0
+2024-09-22,21:11:39 | INFO | Rank 0 | regression_frequency: 2
+2024-09-22,21:11:39 | INFO | Rank 0 | report_to: 
+2024-09-22,21:11:39 | INFO | Rank 0 | resume: None
+2024-09-22,21:11:39 | INFO | Rank 0 | retrieval_data: None
+2024-09-22,21:11:39 | INFO | Rank 0 | save_frequency: 1
+2024-09-22,21:11:39 | INFO | Rank 0 | save_most_recent: False
+2024-09-22,21:11:39 | INFO | Rank 0 | skip_aggregate: False
+2024-09-22,21:11:39 | INFO | Rank 0 | skip_scheduler: False
+2024-09-22,21:11:39 | INFO | Rank 0 | source_data: None
+2024-09-22,21:11:39 | INFO | Rank 0 | target_data: None
+2024-09-22,21:11:39 | INFO | Rank 0 | target_pad: False
+2024-09-22,21:11:39 | INFO | Rank 0 | tensorboard: False
+2024-09-22,21:11:39 | INFO | Rank 0 | tensorboard_path: 
+2024-09-22,21:11:39 | INFO | Rank 0 | time_suffix: True
+2024-09-22,21:11:39 | INFO | Rank 0 | train_data: cc/Train_GCC-training_output.csv
+2024-09-22,21:11:39 | INFO | Rank 0 | use_bn_sync: False
+2024-09-22,21:11:39 | INFO | Rank 0 | use_debiased_sampler: False
+2024-09-22,21:11:39 | INFO | Rank 0 | use_prefix: False
+2024-09-22,21:11:39 | INFO | Rank 0 | val_data: None
+2024-09-22,21:11:39 | INFO | Rank 0 | wandb: False
+2024-09-22,21:11:39 | INFO | Rank 0 | wandb_notes: 
+2024-09-22,21:11:39 | INFO | Rank 0 | warmup: 10000
+2024-09-22,21:11:39 | INFO | Rank 0 | wd: 0.1
+2024-09-22,21:11:39 | INFO | Rank 0 | workers: 8
+2024-09-22,21:11:39 | INFO | Rank 0 | world_size: 1
+2024-09-22,21:11:39 | INFO | Rank 0 | zeroshot_frequency: 2
+2024-09-22,21:11:39 | INFO | Rank 0 | Use GPU: 0 for training
+2024-09-22,21:11:42 | INFO | Rank 0 | Start epoch 0
+2024-09-22,21:11:46 | INFO | Rank 0 | Start epoch 1
+2024-09-22,21:11:51 | INFO | Rank 0 | Start epoch 2
+2024-09-22,21:11:55 | INFO | Rank 0 | Start epoch 3
+2024-09-22,21:11:59 | INFO | Rank 0 | Start epoch 4
+2024-09-22,21:12:03 | INFO | Rank 0 | Start epoch 5
+2024-09-22,21:12:07 | INFO | Rank 0 | Start epoch 6
+2024-09-22,21:12:11 | INFO | Rank 0 | Start epoch 7
+2024-09-22,21:12:15 | INFO | Rank 0 | Start epoch 8
+2024-09-22,21:12:19 | INFO | Rank 0 | Start epoch 9
+2024-09-22,21:12:23 | INFO | Rank 0 | Start epoch 10
+2024-09-22,21:12:27 | INFO | Rank 0 | Start epoch 11
+2024-09-22,21:12:32 | INFO | Rank 0 | Start epoch 12
+2024-09-22,21:12:36 | INFO | Rank 0 | Start epoch 13
+2024-09-22,21:12:40 | INFO | Rank 0 | Start epoch 14
+2024-09-22,21:12:45 | INFO | Rank 0 | Start epoch 15
+2024-09-22,21:12:49 | INFO | Rank 0 | Start epoch 16
+2024-09-22,21:12:53 | INFO | Rank 0 | Start epoch 17
+2024-09-22,21:12:57 | INFO | Rank 0 | Start epoch 18
+2024-09-22,21:13:01 | INFO | Rank 0 | Start epoch 19
+2024-09-22,21:13:06 | INFO | Rank 0 | Start epoch 20
+2024-09-22,21:13:10 | INFO | Rank 0 | Start epoch 21
+2024-09-22,21:13:14 | INFO | Rank 0 | Start epoch 22
+2024-09-22,21:13:19 | INFO | Rank 0 | Start epoch 23
+2024-09-22,21:13:23 | INFO | Rank 0 | Start epoch 24
+2024-09-22,21:13:27 | INFO | Rank 0 | Start epoch 25
+2024-09-22,21:13:31 | INFO | Rank 0 | Start epoch 26
+2024-09-22,21:13:35 | INFO | Rank 0 | Start epoch 27
+2024-09-22,21:13:40 | INFO | Rank 0 | Start epoch 28
+2024-09-22,21:13:44 | INFO | Rank 0 | Start epoch 29

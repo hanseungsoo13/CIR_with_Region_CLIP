@@ -1,0 +1,4 @@
+RegionCLIP/datasets/lvis/
+
+*.jpg
+*.pt
