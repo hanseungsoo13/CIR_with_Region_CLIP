@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://github.com/openai/CLIP/blob/main/clip/bpe_simple_vocab_16e6.txt.gz
+HostUrl=https://raw.githubusercontent.com/openai/CLIP/main/clip/bpe_simple_vocab_16e6.txt.gz
