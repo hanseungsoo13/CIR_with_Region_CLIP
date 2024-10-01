@@ -4,10 +4,17 @@
 `cd composed_image_retrieval`
 
 **train**
+- 환경변수 설정
+  ```
+  . env3/bin/activate
+export PYTHONPATH="$PYTHONPATH:$PWD/src"
+export PYTHONWARNINGS='ignore:semaphore_tracker:UserWarning'
+```
+- 학습 실행
 ```
 python -u src/main.py \
     --save-frequency 1 \
-    --train-data="cc/Train_GCC-training_output.csv"  \
+    --train-data="cc/Train_GCC-training_output.csv" #"cc/Train_LVIS_output.csv"  \
     --warmup 10000 \
     --batch-size=128 \
     --lr=1e-4 \
