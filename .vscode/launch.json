@@ -1,0 +1,32 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./src/main.py",
+            "console": "integratedTerminal",
+            "python": "/home/hanseungsoo/miniconda3/envs/regionclip/bin/python3.8",
+            "cwd": "${workspaceFolder}/composed_image_retrieval",
+            "env":{
+                "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}/composed_image_retrieval/src",
+                "PYTHONWARNINGS":"ignore:semaphore_tracker:UserWarning"
+            },
+            "args": [
+                "--save-frequency", "1",
+                "--train-data=cc/Train_LVIS_output.csv",
+                "--warmup", "10000",
+                "--batch-size=16",
+                "--lr=1e-4",
+                "--wd=0.1",
+                "--epochs=3",
+                "--workers=8",
+                "--openai-pretrained"
+            ],            
+        }
+    ]
+}

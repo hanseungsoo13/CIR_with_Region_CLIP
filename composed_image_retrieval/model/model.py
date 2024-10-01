@@ -295,7 +295,6 @@ args = {
 }
 
 from .extract_region_features import extract_region_feature
-region_clip_visual = extract_region_feature(args)
 
 class CLIP(nn.Module):
     def __init__(self,
@@ -322,16 +321,10 @@ class CLIP(nn.Module):
 
         if isinstance(vision_layers, (tuple, list)):
             vision_heads = vision_width * 32 // 64
-            self.visual = ModifiedResNet(
-                layers=vision_layers,
-                output_dim=embed_dim,
-                heads=vision_heads,
-                input_resolution=image_resolution,
-                width=vision_width
-            )
+            self.visual = extract_region_feature(image_resolution,args)
         else:
             vision_heads = vision_width // 64
-            self.visual = region_clip_visual
+            self.visual = extract_region_feature(image_resolution,args)
 
         self.transformer_width = transformer_width
         self.transformer = Transformer(
@@ -404,14 +397,17 @@ class CLIP(nn.Module):
 
     @property
     def dtype(self):
-        return self.visual.conv1.weight.dtype
+        return 'torch.FloatTensor'
 
-    def encode_image(self, image, text):
-        print(text)
-        return self.visual(image.type(self.dtype),text)
+    def encode_image(self, image, text, bbox=None, image_filenames=None):
+        if bbox==None:
+            raise Exception('bbox가 None 입니다.')
+            return self.visual(image.type(self.dtype),text)
+        else:
+            return self.visual(image,text, bbox, image_filenames).type('torch.FloatTensor')
 
     def encode_text(self, text):
-        x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
+        x = self.token_embedding(text).type(self.dtype).to('cuda')  # [batch_size, n_ctx, d_model]
 
         x = x + self.positional_embedding.type(self.dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
@@ -428,20 +424,21 @@ class CLIP(nn.Module):
 
     def encode_text_img(self, text, img_tokens):
         b_size = img_tokens.size(0)
-        x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
+        x = self.token_embedding(text).type(self.dtype).to('cuda')  # [batch_size, n_ctx, d_model]
         collect_ind = text == self.end_id 
-        collect_ind = collect_ind.nonzero()[:, 1]
-        img_tokens = img_tokens.view(b_size, 1, -1)
+        collect_ind = collect_ind.nonzero()[:, 1].to(x.device)
+        img_tokens = img_tokens.view(b_size, 1, -1).to(x.device)
         x = torch.cat([x[:, :collect_ind[0]], img_tokens, x[:, collect_ind[0]:-1]], dim=1)
-        x = x + self.positional_embedding.type(self.dtype)
+        x = x + self.positional_embedding.type(self.dtype).to(x.device)
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.ln_final(x).type(self.dtype)
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)    
-        x = x[torch.arange(x.size(0)), collect_ind+1] @ self.text_projection
-        return x              
+     
+        x = x.cuda()[torch.arange(x.size(0)), collect_ind+1] @ self.text_projection
+        return x        
     
     def encode_text_img_vis(self, text, img_tokens, split_ind=4):
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
@@ -505,7 +502,7 @@ class CLIP(nn.Module):
         x = x[torch.arange(x.size(0)), collect_ind] @ self.text_projection
         return x
    
-    def forward(self, image, text, extra=False):
+    def forward(self, image, text, bbox, image_filenames, extra=False):
         if image is None:
             if extra:
                 return self.encode_text_extra(text)
@@ -513,7 +510,7 @@ class CLIP(nn.Module):
                 return self.encode_text(text)
         elif text is None:
             return self.encode_image(image)
-        image_features = self.encode_image(image,text)
+        image_features = self.encode_image(image,text,bbox,image_filenames)
         if extra:
             text_features = self.encode_text_extra(text)
         else:
@@ -553,11 +550,11 @@ def convert_weights(model: nn.Module):
                 if tensor is not None:
                     tensor.data = tensor.data.half()
 
-        for name in ["text_projection", "proj"]:
-            if hasattr(l, name):
-                attr = getattr(l, name)
-                if attr is not None:
-                    attr.data = attr.data.half()
+            for name in ["text_projection", "proj"]:
+                if hasattr(l, name):
+                    attr = getattr(l, name)
+                    if attr is not None:
+                        attr.data = attr.data.half()
 
     model.apply(_convert_weights_to_fp16)
 
@@ -598,5 +595,5 @@ def build_model(state_dict: dict):
             del state_dict[key]
 
     convert_weights(model)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)
     return model.eval()

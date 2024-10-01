@@ -394,6 +394,40 @@ class CsvDataset(Dataset):
             return images, texts, 0
         return images, texts
 
+#Projection Module 학습용 Train datatset module
+class TrainCsvDataset(Dataset):
+    def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t",
+                 return_data_identifier=False, return_filename=False):
+        logging.debug(f'Loading csv data from {input_filename}.')
+        df = pd.read_csv(input_filename, sep=sep)
+        self.images = df[img_key].tolist()
+        self.captions = df[caption_key].tolist()
+        self.bbox = df['bbox'].tolist()
+        self.transforms = transforms
+        self.return_data_identifier = return_data_identifier
+        logging.debug('Done loading data of {} samples'.format(len(self.images)))
+        self.return_filename = return_filename
+
+    def __len__(self):
+        return len(self.captions)
+
+    def __getitem__(self, idx):
+        images = self.transforms(Image.open(str(self.images[idx])))
+        
+        texts = tokenize([str(self.captions[idx])])[0]
+        bbox = self.bbox[idx]
+        print(bbox)
+
+        bbox = [float(i) for i in bbox[1:-1].split(', ')]
+
+        if self.return_data_identifier:
+            return images, texts, bbox, 0
+
+        if self.return_filename:
+            return torch.Tensor(images), torch.Tensor(texts), bbox, str(self.images[idx])
+        
+        return images, texts, bbox
+
 @dataclass
 class DataInfo:
     dataloader: DataLoader
@@ -469,12 +503,22 @@ def get_csv_dataset(args, preprocess_fn, is_train, input_filename=None):
     if input_filename is None:
         input_filename = args.train_data if is_train else args.val_data
     assert input_filename
-    dataset = CsvDataset(
-        input_filename,
-        preprocess_fn,
-        img_key=args.csv_img_key,
-        caption_key=args.csv_caption_key,
-        sep=',')
+
+    if is_train:
+        dataset = TrainCsvDataset(
+            input_filename,
+            preprocess_fn,
+            img_key=args.csv_img_key,
+            caption_key=args.csv_caption_key,
+            return_filename=True,
+            sep=',')
+    else:
+        dataset = CsvDataset(
+            input_filename,
+            preprocess_fn,
+            img_key=args.csv_img_key,
+            caption_key=args.csv_caption_key,
+            sep=',')
         
     num_samples = len(dataset)
     sampler = DistributedSampler(dataset) if args.distributed and is_train else None

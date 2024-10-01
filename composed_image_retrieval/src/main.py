@@ -25,7 +25,7 @@ import torch.multiprocessing as mp
 import torch.backends.cudnn as cudnn
 from torch.utils.tensorboard import SummaryWriter
 from torch.cuda.amp import GradScaler
-from third_party.open_clip.scheduler import cosine_lr
+from open_clip_train.scheduler import cosine_lr
 from model.clip import _transform, load
 from model.model import convert_weights, CLIP, IM2TEXT
 from trainer import train

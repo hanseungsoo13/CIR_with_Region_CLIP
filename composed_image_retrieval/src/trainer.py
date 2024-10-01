@@ -99,10 +99,10 @@ def get_text_features(model, token_features, args):
     text_features = model.encode_text_img(text, token_features)
     return text_features
 
-def get_loss_img2text(model, img2text, images, loss_img, loss_txt, args, memory=None):
+def get_loss_img2text(model, img2text, images, text, loss_img, loss_txt, args, bbox=None, image_filenames=None, memory=None):
     with torch.no_grad():
-        image_features = model.encode_image(images)
-    token_features = img2text(image_features)
+        image_features = model.encode_image(images, text, bbox, image_filenames).to('cuda')
+    token_features = img2text(image_features).to('cuda')
     text_features = get_text_features(model, token_features, args)
     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
     text_features = text_features / text_features.norm(dim=-1, keepdim=True)    
@@ -177,14 +177,17 @@ def train(model, img2text, data, epoch, optimizer, scaler, scheduler, args, tb_w
         scheduler(step)
 
         optimizer.zero_grad()
-
-        images, texts = batch[0], batch[1]
+        if len(batch)>2:
+            images, texts, bboxes, image_filenames = batch[0], batch[1], batch[2], batch[3]
+        else:
+            images, texts = batch[0], batch[1]
         if len(batch) == 3 and args.use_debiased_sampler:
             data_identifier = torch.unique(batch[2])[0].numpy()
         else:
             data_identifier = -1
         if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
+            texts = texts.cuda(args.gpu, non_blocking=True)
 
         data_time = time.time() - end
 
@@ -193,13 +196,13 @@ def train(model, img2text, data, epoch, optimizer, scaler, scheduler, args, tb_w
         # with automatic mixed precision.
         if args.precision == "amp":
             with autocast():
-                total_loss = get_loss_img2text(m, img2text, images, loss_img, loss_txt, args, data_identifier)
+                total_loss = get_loss_img2text(m, img2text, images, texts, loss_img, loss_txt, args, bboxes, image_filenames, data_identifier)
                 scaler.scale(total_loss).backward()
                 scaler.step(optimizer)
             scaler.update()
 
         else:
-            total_loss = get_loss_img2text(m, img2text, images, loss_img, loss_txt, args, data_identifier)
+            total_loss = get_loss_img2text(m, img2text, images, texts, loss_img, loss_txt, args, bboxes, image_filenames, data_identifier,)
             total_loss.backward()
             optimizer.step()
 
