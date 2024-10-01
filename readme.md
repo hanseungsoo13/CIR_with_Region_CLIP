@@ -9,8 +9,9 @@
   . env3/bin/activate
 export PYTHONPATH="$PYTHONPATH:$PWD/src"
 export PYTHONWARNINGS='ignore:semaphore_tracker:UserWarning'
-```
+  ```
 - 학습 실행
+
 ```
 python -u src/main.py \
     --save-frequency 1 \
